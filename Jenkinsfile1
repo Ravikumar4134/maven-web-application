@@ -1,0 +1,88 @@
+pipeline {
+    agent {
+        label 'node_2'
+    }
+    triggers {
+        githubPush()
+        
+    }
+    parameters {
+    string defaultValue: 'patch', description: '''default is patch
+    minor
+    major''', name: 'version_set', trim: true
+    }
+
+    environment {
+        IMAGE_NAME = "ravikumarbikki/maven-web-application"
+        VERSION_FILE = "version.txt"
+    }
+    
+    tools {
+        maven 'maven-3.9.9'
+    }
+    options {
+        timestamps()
+        authorizationMatrix([user(name: 'krishna', permissions: ['Credentials/Create', 'Credentials/Delete', 'Credentials/ManageDomains', 'Credentials/Update', 'Credentials/View', 'Job Config History/DeleteEntry', 'Job/Build', 'Job/Cancel', 'Job/Configure', 'Job/Delete', 'Job/Discover', 'Job/Move', 'Job/Read', 'Job/Workspace', 'Run/Delete', 'Run/Replay', 'Run/Update', 'SCM/Tag'])])
+        buildDiscarder logRotator(artifactDaysToKeepStr: '', artifactNumToKeepStr: '', daysToKeepStr: '10', numToKeepStr: '10')
+    }
+
+    stages {
+        stage('clone the project'){
+            steps {
+                git credentialsId: 'b57996c1-382d-4486-b405-38a177b5d667', url: 'https://github.com/Ravikumar4134/maven-web-application.git'
+            }
+        
+        }
+        
+        stage('build stage'){
+            steps {
+                echo 'compiling the project'
+                sh 'mvn clean package'
+            }
+        }
+        
+    
+        stage('docker image creation stage'){
+            steps {
+                script {
+                    if (fileExists(VERSION_FILE)) {
+                        sh "chmod +x version.py"
+                        sh "python version.py ${version_set}"
+                        def version = readFile(VERSION_FILE).trim()
+                        env.VERSION = version
+                    }else {
+                        //if else version file doesn't exit default version will be use
+                        env.VERSION = '1.0.0'
+                    }
+                    //def latestTag = sh(script: "git describe --tags --abbrev=0", returnStdout: true ).trim()
+                     
+                     //   echo 'new verison ${latestTag}'
+                    //def newVersion = "${BUILD_NUMBER}"
+                    //def versionParts = latestTag.tokenize('.')
+                    //def newVersion = "${versionParts[0]}.${versionParts[1]}.${(versionParts[2] as int) + 1}"
+                    
+                   // echo '${newVersion}'
+                   // env.VERSION = new Date().format("yyyyMMdd.HHmmss")
+                    
+                    
+                    
+                    sh "docker build -t ${env.IMAGE_NAME}:${env.VERSION} ."
+                    echo 'testing the project'
+                    sh 'docker image prune -f'
+                }
+
+            }
+        }
+        stage('deployment stage'){
+            steps {
+                withCredentials([string(credentialsId: 'docker_PAT', variable: 'docker_cred')]) {
+                    sh 'echo "${docker_cred}" | docker login -u ravikumarbikki --password-stdin' 
+                    
+                }
+                
+                echo 'deploying the project'
+                sh "docker push ${env.IMAGE_NAME}:${env.VERSION}"
+            }
+        }
+    }
+}
