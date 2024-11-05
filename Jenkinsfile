@@ -32,7 +32,7 @@ stages{
 /*
  stage('ExecuteSonarQubeReport'){
   steps{
-  sh  "mvn clean sonar:sonar"
+  sh  "mvn clean sonar:sonar" 
   }
   }
   
